@@ -1,13 +1,13 @@
 workspace:
   base: /go
-  path: src/github.com/u2takey/kci-sdk-go
+  path: src/github.com/u2takey/kci-sdk-go/kciClient
 pipeline:
   build:
     image: index.qiniu.com/kci/golang:1.6
     environment:
       - GOPATH=/go
     commands:
-      - go test kciClient
+      - go test -v .
   index.qiniu.com/kci/plugin_email:
     recipients:
       - 541004974@qq.com
