@@ -1,0 +1,11 @@
+pipeline:
+  build:
+    image: index.qiniu.com/kci/golang:1.6
+    commands:
+      - go test kciClient
+  index.qiniu.com/kci/plugin_email:
+    recipients:
+      - 541004974@qq.com
+    when:
+      event: [push, tag, deployment]
+      status:  [ failure, success ]
