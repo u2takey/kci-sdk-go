@@ -40,4 +40,8 @@ type Client interface {
 
 	// 检查项目名是否可用
 	CheckProjName(name string) (*CheckProjNameRes, error)
+
+	// 实时日志
+	FeedWs(userid uint64) (<-chan []byte, error)
+	LogWs(projId int64, buildId, jobNum int) (<-chan []byte, error)
 }

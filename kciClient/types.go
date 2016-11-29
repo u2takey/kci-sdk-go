@@ -61,12 +61,13 @@ type CreateProjReq struct {
 	RepoOwner     string `json:"repoOwner"`
 	RepoName      string `json:"repoName"`
 }
+
 type CheckProjNameRes struct {
 	Avaliable bool `json:"avaliable"`
 }
 
 type PatchProj struct {
-	Timeout      *int64 `json:"timeout" `
+	Timeout      *int64 `json:"timeout"`
 	PrActive     *bool  `json:"prActive"`
 	PushActive   *bool  `json:"pushActive"`
 	DeployActive *bool  `json:"deployActive"`

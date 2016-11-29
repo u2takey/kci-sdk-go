@@ -31,6 +31,9 @@ type readCloser struct {
 }
 
 var ErrNoBody = errors.New("no body")
+var ErrTooLargeBody = errors.New("too large body")
+
+var MaxBodyLength int64 = 16 * 1024 * 1024
 
 func New(req *http.Request) (r SeekableCloser, err error) {
 	if req.Body == nil {
@@ -49,15 +52,28 @@ func New(req *http.Request) (r SeekableCloser, err error) {
 	return
 }
 
+type readCloser2 struct {
+	io.Reader
+	io.Closer
+}
+
 func ReadAll(req *http.Request) (b []byte, err error) {
-	if req.ContentLength > 0 {
+	if req.ContentLength > MaxBodyLength {
+		return nil, ErrTooLargeBody
+	} else if req.ContentLength > 0 {
 		b = make([]byte, int(req.ContentLength))
 		_, err = io.ReadFull(req.Body, b)
 		return
 	} else if req.ContentLength == 0 {
 		return nil, ErrNoBody
 	}
-	return ioutil.ReadAll(req.Body)
+	b, err = ioutil.ReadAll(io.LimitReader(req.Body, MaxBodyLength+1))
+	if int64(len(b)) > MaxBodyLength {
+		r := io.MultiReader(bytes.NewReader(b), req.Body)
+		req.Body = readCloser2{r, req.Body}
+		return nil, ErrTooLargeBody
+	}
+	return
 }
 
 // ---------------------------------------------------

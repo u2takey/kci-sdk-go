@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/gorilla/websocket"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
-
-	"github.com/u2takey/kci-sdk-go/mac"
+	"time"
 )
 
 const (
@@ -23,20 +23,44 @@ const (
 	pathBuildById     = "%s/v1/build/%d/%d"
 	pathBuildLogById  = "%s/v1/build/%d/%d/%d/log"
 	pathAuth          = "%s/v1/%s/auth"
+	pathFeedWs        = "%s/ws/feed/%d"
+	pathRealLogs      = "%s/ws/log/%d/%d/%d"
+
+	httpScheme = "https://"
+	wsScheme   = "wss://"
 )
 
 type client struct {
 	client *http.Client
 	base   string // base url
-	ak     string
-	sk     string
+	wsbase string
+	config *ClientConfig
+}
+
+type ClientConfig struct {
+	Host      string
+	AK        string
+	SK        string
+	Transport http.RoundTripper
+	UserAgent string
 }
 
 // NewClient returns a client at the specified url.
-func NewClient(url string, ak, sk string) Client {
-	c := &client{base: url, ak: ak, sk: sk}
-	m := mac.New(ak, sk)
-	c.client = mac.NewClient(m, nil)
+func NewClient(host, ak, sk string) Client {
+	config := &ClientConfig{
+		Host:      host,
+		AK:        ak,
+		SK:        sk,
+		UserAgent: "KCISDK / " + sdkVersion,
+	}
+	return NewClientWithConfig(config)
+}
+
+// NewClient returns a client at the specified url.
+func NewClientWithConfig(config *ClientConfig) Client {
+	c := &client{base: httpScheme + config.Host, wsbase: wsScheme + config.Host, config: config}
+	m := NewMac(config.AK, config.SK)
+	c.client = NewMacClient(m, config.Transport)
 	return c
 }
 
@@ -143,6 +167,59 @@ func (c *client) CheckProjName(name string) (*CheckProjNameRes, error) {
 }
 
 //
+func (p *client) FeedWs(userid uint64) (<-chan []byte, error) {
+	uri := fmt.Sprintf(pathFeedWs, p.wsbase, userid)
+	return p.wsMessages(uri)
+}
+
+func (p *client) LogWs(projId int64, num, job int) (<-chan []byte, error) {
+	uri := fmt.Sprintf(pathRealLogs, p.wsbase, projId, num, job)
+	return p.wsMessages(uri)
+}
+
+func (p *client) wsMessages(uri string) (<-chan []byte, error) {
+	dailer := &websocket.Dialer{
+		Proxy: http.ProxyFromEnvironment,
+	}
+	header := make(http.Header)
+	if p.config.UserAgent != "" {
+		header["User-Agent"] = []string{p.config.UserAgent}
+	}
+	c, _, err := dailer.Dial(uri, header)
+	if err != nil {
+		return nil, err
+	}
+	msg := make(chan []byte, 10)
+
+	go func() {
+		defer c.Close()
+		defer close(msg)
+		for {
+			_, message, err := c.ReadMessage()
+			if err != nil {
+				return
+			}
+			msg <- message
+		}
+	}()
+
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				c.SetWriteDeadline(time.Now().Add(10 * time.Second))
+				if err := c.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
+					return
+				}
+			}
+		}
+	}()
+	return msg, nil
+}
+
+//
 // http request helper functions
 //
 
@@ -213,6 +290,9 @@ func (c *client) stream(rawurl, method string, in, out interface{}) (io.ReadClos
 
 	// creates a new http request to bitbucket.
 	req, err := http.NewRequest(method, uri.String(), buf)
+	if c.config.UserAgent != "" {
+		req.Header.Set("User-Agent", c.config.UserAgent)
+	}
 	if err != nil {
 		return nil, err
 	}

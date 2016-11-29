@@ -16,8 +16,12 @@ const defaultTagsActive = false
 // !! warning !! test will del/add/mod projects
 func TestClient(t *testing.T) {
 	g := goblin.Goblin(t)
-
-	client := NewClient(kciUrl, ak, sk)
+	client := NewClientWithConfig(&ClientConfig{
+		AK:        ak,
+		SK:        sk,
+		Host:      kciHost,
+		Transport: nil,
+	})
 	g.Describe("TestClient", func() {
 		// !!! you should auth with portal first !!!
 		var projIdForBuildTest int64
